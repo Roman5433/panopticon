@@ -284,7 +284,7 @@ function setAwareness(v) { awareness = Math.max(0, Math.min(100, v)); $('awf').s
 const hist = [];
 
 // >>>>>> ВСТАВЬ СЮДА АДРЕС СВОЕГО WORKER (из Cloudflare), без слэша в конце <<<<<<
-const WORKER_URL = 'https://ВСТАВЬ-СЮДА-АДРЕС.workers.dev';
+const WORKER_URL = 'https://panopticon.grabbb777.workers.dev';
 
 async function api(body) {
   const r = await fetch(WORKER_URL, {
