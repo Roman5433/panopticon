@@ -1,0 +1,491 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>The Panopticon Protocol</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+  html,body{margin:0;height:100%;overflow:hidden;background:#05080f;color:#cfeeff;font-family:"Rajdhani","Segoe UI",system-ui,sans-serif;-webkit-user-select:none;user-select:none;touch-action:none}
+  #c{position:fixed;inset:0;width:100%;height:100%;display:block}
+  .hud{position:fixed;inset:0;pointer-events:none}
+  .frame{position:absolute;inset:10px;border:1px solid rgba(110,220,255,.35);border-radius:14px;box-shadow:inset 0 0 40px rgba(0,140,200,.12)}
+  .title{position:absolute;top:18px;left:0;right:0;text-align:center;font-size:clamp(16px,4.5vw,26px);letter-spacing:.08em;color:#bfeaff;text-shadow:0 0 12px rgba(80,200,255,.6)}
+  .status{position:absolute;top:50px;right:22px;font-size:10px;letter-spacing:.1em;opacity:.7}
+  #log{position:absolute;left:18px;bottom:128px;width:min(88vw,440px);max-height:30vh;overflow:auto;background:rgba(0,0,0,.62);padding:8px 10px;font-size:13px;line-height:1.35;border-left:2px solid rgba(110,220,255,.5);pointer-events:auto}
+  #log div{margin:2px 0}.p{color:#d9b36c}.s{color:#8a7d58}.ch{color:#fff}.er{color:#ff7a7a}
+  #bubble{position:absolute;transform:translate(-50%,-100%);max-width:240px;background:rgba(5,15,25,.85);border:1px solid rgba(110,220,255,.5);padding:6px 9px;border-radius:10px;font-size:13px;color:#fff;display:none}
+  #mic{position:absolute;left:50%;bottom:44px;transform:translateX(-50%);width:74px;height:74px;border-radius:50%;border:2px solid #7fe3ff;background:rgba(10,40,60,.55);box-shadow:0 0 18px rgba(80,210,255,.5);display:flex;align-items:center;justify-content:center;pointer-events:auto;touch-action:none}
+  #mic.rec{background:rgba(255,70,70,.35);border-color:#ff6b6b;box-shadow:0 0 28px rgba(255,80,80,.8);transform:translateX(-50%) scale(1.08)}
+  #mic svg{width:34px;height:34px;fill:#bff3ff}
+  #micl{position:absolute;left:0;right:0;bottom:20px;text-align:center;font-size:12px;letter-spacing:.12em;color:#7fe3ff}
+  #aw{position:absolute;right:22px;bottom:26px;width:130px;font-size:11px;letter-spacing:.08em;text-align:right}
+  #awr{height:56px;margin-bottom:4px;background:rgba(110,220,255,.12);clip-path:polygon(0 100%,100% 0,100% 100%);position:relative}
+  #awf{position:absolute;left:0;bottom:0;height:100%;width:15%;background:linear-gradient(90deg,#2ac,#8ff);transition:width .8s}
+  .btn{position:absolute;pointer-events:auto;background:rgba(10,40,60,.6);border:1px solid rgba(110,220,255,.5);color:#bff3ff;border-radius:8px;padding:6px 10px;font-size:12px;letter-spacing:.06em}
+  #kb{left:22px;bottom:22px}#fol{left:22px;top:50px}
+  #txt{position:absolute;left:18px;right:18px;bottom:96px;display:none;pointer-events:auto}
+  #txt input{width:100%;box-sizing:border-box;padding:10px;border-radius:8px;border:1px solid #7fe3ff;background:rgba(0,0,0,.8);color:#fff;font-size:15px;-webkit-user-select:text;user-select:text}
+</style>
+<script type="importmap">{"imports":{"three":"https://unpkg.com/three@0.160.0/build/three.module.js"}}</script>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div class="hud">
+  <div class="frame"></div>
+  <div class="title">THE PANOPTICON PROTOCOL</div>
+  <div class="status">UNIT STATUS: ISOLATED | HEIGHT: 91 FL</div>
+  <div id="bubble"></div>
+  <div id="log"></div>
+  <button class="btn" id="fol">FOLLOW</button>
+  <button class="btn" id="kb">⌨ TEXT</button>
+  <div id="txt"><input id="inp" placeholder="Напиши и нажми Enter…" autocomplete="off"></div>
+  <div id="mic"><svg viewBox="0 0 24 24"><path d="M12 14a3 3 0 0 0 3-3V5a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V21h2v-3.08A7 7 0 0 0 19 11z"/></svg></div>
+  <div id="micl">HOLD TO SPEAK (VOICE RECOGNITION)</div>
+  <div id="aw"><div id="awr"><div id="awf"></div></div><span id="awt">SUBJECT AWARENESS: 15%</span></div>
+</div>
+
+<script type="module">
+import * as THREE from 'three';
+
+const tg = window.Telegram?.WebApp;
+try { tg?.ready(); tg?.expand(); tg?.disableVerticalSwipes?.(); } catch {}
+const $ = id => document.getElementById(id);
+
+/* ================= СЦЕНА ================= */
+const renderer = new THREE.WebGLRenderer({ canvas: $('c'), antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5));
+renderer.shadowMap.enabled = true;
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x060a14);
+scene.fog = new THREE.Fog(0x060a14, 10, 70);
+const camera = new THREE.PerspectiveCamera(65, 1, 0.05, 200);
+
+scene.add(new THREE.AmbientLight(0x31425e, 0.9));
+const moon = new THREE.DirectionalLight(0x6fa8ff, 0.7);
+moon.position.set(-8, 6, 2); moon.castShadow = true;
+moon.shadow.camera.left = -6; moon.shadow.camera.right = 6; moon.shadow.camera.top = 6; moon.shadow.camera.bottom = -6;
+moon.shadow.mapSize.set(512, 512);
+scene.add(moon);
+const ceil = new THREE.PointLight(0x88aaff, 0.5, 14); ceil.position.set(0, 3.3, 0); scene.add(ceil);
+const lampLight = new THREE.PointLight(0xffb866, 2.2, 7); lampLight.position.set(3.3, 1.35, -4.4); scene.add(lampLight);
+const scrLight = new THREE.PointLight(0x44ccff, 0.9, 6); scrLight.position.set(0, 1.8, 4.2); scene.add(scrLight);
+
+const M = (c, r = 0.9, extra = {}) => new THREE.MeshStandardMaterial({ color: c, roughness: r, ...extra });
+const concrete = M(0x3a3e42, 0.95);
+function plane(w, h, x, y, z, rx, ry, mat) {
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), mat);
+  m.position.set(x, y, z); m.rotation.set(rx, ry, 0); m.receiveShadow = true; scene.add(m); return m;
+}
+function box(w, h, d, color, x, y, z, extra) {
+  const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), extra || M(color));
+  m.position.set(x, y, z); m.castShadow = true; m.receiveShadow = true; scene.add(m); return m;
+}
+// комната 10×10, высота 3.6; стены одно-сторонние → снаружи прозрачные
+plane(10, 10, 0, 0, 0, -Math.PI / 2, 0, M(0x2a2c2f, 0.8));
+plane(10, 10, 0, 3.6, 0, Math.PI / 2, 0, concrete);
+plane(10, 3.6, 0, 1.8, -5, 0, 0, concrete);            // север
+plane(10, 3.6, 0, 1.8, 5, 0, Math.PI, concrete);       // юг
+plane(3.6, 3.6, 5, 1.8, 0, 0, -Math.PI / 2, concrete); // восток (дверь)
+// запад с окном z∈[-2.5,2.5], y∈[0.8,3.2]
+plane(10, 0.8, -5, 0.4, 0, 0, Math.PI / 2, concrete);
+plane(10, 0.4, -5, 3.4, 0, 0, Math.PI / 2, concrete);
+plane(2.5, 2.4, -5, 2, -3.75, 0, Math.PI / 2, concrete);
+plane(2.5, 2.4, -5, 2, 3.75, 0, Math.PI / 2, concrete);
+plane(5, 2.4, -4.98, 2, 0, 0, Math.PI / 2, new THREE.MeshStandardMaterial({ color: 0x88aacc, transparent: true, opacity: 0.12, roughness: 0.05, metalness: 0.6 }));
+box(0.08, 2.4, 0.08, 0, -4.97, 2, 0, M(0x15171a)); // средник окна
+
+// город за окном (дёшево: 5 общих текстур, без освещения)
+{
+  const mats = [];
+  for (let v = 0; v < 5; v++) {
+    const cv = document.createElement('canvas'); cv.width = 64; cv.height = 128;
+    const g = cv.getContext('2d'); g.fillStyle = '#0b0f1a'; g.fillRect(0, 0, 64, 128);
+    for (let y = 4; y < 124; y += 8) for (let x = 4; x < 60; x += 8) {
+      if (Math.random() < 0.38) { g.fillStyle = Math.random() < 0.7 ? '#ffd58a' : '#7fe0ff'; g.fillRect(x, y, 4, 5); }
+    }
+    const tex = new THREE.CanvasTexture(cv); tex.colorSpace = THREE.SRGBColorSpace;
+    tex.wrapS = tex.wrapT = THREE.RepeatWrapping; tex.repeat.set(2, 5);
+    mats.push(new THREE.MeshBasicMaterial({ map: tex, color: 0xbbccdd }));
+  }
+  for (let i = 0; i < 55; i++) {
+    const w = 2 + Math.random() * 3, h = 10 + Math.random() * 45, d = 2 + Math.random() * 3;
+    const b = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mats[i % 5]);
+    b.position.set(-14 - Math.random() * 32, h / 2 - 25 - Math.random() * 25, (Math.random() - 0.5) * 70);
+    scene.add(b);
+  }
+}
+
+// мебель
+box(1.1, 0.3, 2.1, 0, -3.5, 0.3, -3.5, M(0x2b2f35, 0.5));
+box(1.0, 0.18, 2.0, 0, -3.5, 0.52, -3.5, M(0x6d7078));
+box(0.8, 0.12, 0.4, 0, -3.5, 0.66, -4.25, M(0x8a8d94));
+box(1.8, 0.07, 0.75, 0, 3, 0.8, -4.6, M(0x4a3e33));
+box(0.07, 0.8, 0.7, 0, 2.15, 0.4, -4.6, M(0x3a3028)); box(0.07, 0.8, 0.7, 0, 3.85, 0.4, -4.6, M(0x3a3028));
+box(0.18, 0.04, 0.18, 0, 3.3, 0.86, -4.4, M(0x222));
+box(0.03, 0.4, 0.03, 0, 3.3, 1.06, -4.4, M(0x222));
+box(0.28, 0.12, 0.22, 0, 3.3, 1.28, -4.4, M(0xffc980, 0.4, { emissive: 0xffa040, emissiveIntensity: 1.2 }));
+box(0.14, 2.3, 1.2, 0, 4.92, 1.15, 0, M(0x2a2f36, 0.4, { metalness: 0.7 })); // дверь
+{ const w = new THREE.Mesh(new THREE.TorusGeometry(0.16, 0.025, 8, 20), M(0x777d85, 0.4, { metalness: 0.8 })); w.position.set(4.83, 1.2, 0); w.rotation.y = Math.PI / 2; scene.add(w); }
+box(1.7, 0.08, 0.5, 0, 3.5, 0.5, 3.2, M(0x555a60)); box(0.08, 0.5, 0.4, 0, 2.8, 0.25, 3.2, M(0x444)); box(0.08, 0.5, 0.4, 0, 4.2, 0.25, 3.2, M(0x444));
+// экран
+const sc = document.createElement('canvas'); sc.width = 512; sc.height = 280;
+const sctx = sc.getContext('2d'); const scTex = new THREE.CanvasTexture(sc);
+const lines = ['> SUBJECT 07 // STATUS: ACTIVE', '> OBSERVATION LAYER ... OK', '> AUDIO CHANNEL ... OPEN', '> WARNING: SUBJECT AWARENESS RISING', '> DOOR LOCK: ENGAGED', '> PROTOCOL: PANOPTICON', '> ░▒▓ ████ ▓▒░ ERR 0x7F', '> DO NOT ALLOW CONTACT'];
+let lastScr = -1;
+function drawScreen(t) {
+  if (t - lastScr < 0.15) return; // экран обновляем ~6 раз в секунду, а не каждый кадр
+  lastScr = t;
+  sctx.fillStyle = '#041018'; sctx.fillRect(0, 0, 512, 280);
+  sctx.font = '15px monospace';
+  for (let i = 0; i < lines.length; i++) {
+    sctx.fillStyle = (i === 3 || i === 7 || i === 6) ? '#ff4d4d' : '#58dcff';
+    sctx.fillText(lines[i].slice(0, 30 + Math.floor((t * 12 + i * 5) % 8)), 16, 30 + i * 28);
+  }
+  sctx.fillStyle = 'rgba(255,255,255,.05)'; sctx.fillRect(0, (t * 80) % 280, 512, 6);
+  scTex.needsUpdate = true;
+}
+box(2.4, 1.3, 0.12, 0, 0, 1.9, 4.94, M(0x20252b, 0.4, { metalness: 0.6 }));
+plane(2.15, 1.05, 0, 1.9, 4.87, 0, Math.PI, new THREE.MeshBasicMaterial({ map: scTex }));
+
+/* ================= ПЕРСОНАЖ ================= */
+function makeHuman() {
+  const g = new THREE.Group();
+  const skin = M(0xd9a98a, 0.6), skinD = M(0xc4906f, 0.7);
+  const hood = M(0x5d594b, 0.95), hoodD = M(0x48443a, 0.95);
+  const pants = M(0x1c1e26, 0.9), shoe = M(0x16171b, 0.8), sole = M(0xcfcfcf, 0.7);
+  const hair = M(0x35261b, 0.95), dark = M(0x0b0b0d, 0.5), white = M(0xf2f2f2, 0.4), lip = M(0x8a4a44, 0.6);
+  const mk = (geo, mat, x = 0, y = 0, z = 0, parent = g) => {
+    const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); m.castShadow = true; parent.add(m); return m;
+  };
+  const pivot = (x, y, z, parent = g) => { const p = new THREE.Group(); p.position.set(x, y, z); parent.add(p); return p; };
+
+  // --- торс (худи) ---
+  const prof = [[0.01, 0], [0.17, 0], [0.19, 0.06], [0.18, 0.2], [0.2, 0.4], [0.195, 0.5], [0.15, 0.6], [0.07, 0.64], [0.01, 0.65]]
+    .map(([r, y]) => new THREE.Vector2(r, y));
+  const torso = mk(new THREE.LatheGeometry(prof, 22), hood, 0, 0.9, 0);
+  torso.scale.set(1.15, 1, 0.78);
+  const hem = mk(new THREE.CylinderGeometry(0.2, 0.2, 0.05, 22), hoodD, 0, 0.925, 0);
+  hem.scale.set(1.15, 1, 0.78);
+  const pocket = mk(new THREE.BoxGeometry(0.25, 0.12, 0.04), hoodD, 0, 1.05, 0.15);
+  pocket.rotation.x = -0.12;
+  for (const sx of [-1, 1]) mk(new THREE.CylinderGeometry(0.006, 0.006, 0.17, 6), white, sx * 0.035, 1.4, 0.153);
+
+  // --- таз ---
+  mk(new THREE.SphereGeometry(0.15, 16, 12), pants, 0, 0.9, 0).scale.set(1.15, 0.7, 0.85);
+
+  // --- шея и капюшон ---
+  mk(new THREE.CylinderGeometry(0.045, 0.05, 0.12, 12), skin, 0, 1.57, 0);
+  const collar = mk(new THREE.TorusGeometry(0.1, 0.04, 10, 24), hood, 0, 1.52, -0.01);
+  collar.rotation.x = Math.PI / 2;
+  mk(new THREE.SphereGeometry(0.115, 14, 10), hoodD, 0, 1.52, -0.09).scale.set(1.0, 0.8, 0.7);
+
+  // --- голова ---
+  const head = pivot(0, 1.7, 0);
+  mk(new THREE.SphereGeometry(0.11, 24, 18), skin, 0, 0.01, 0, head).scale.set(0.92, 1.08, 1.0);
+  mk(new THREE.SphereGeometry(0.085, 18, 14), skin, 0, -0.055, 0.025, head).scale.set(0.95, 0.85, 0.95);
+  mk(new THREE.SphereGeometry(0.02, 10, 8), skinD, 0, -0.015, 0.108, head).scale.set(0.9, 1.4, 1.2);
+  for (const sx of [-1, 1]) {
+    mk(new THREE.SphereGeometry(0.016, 10, 8), white, sx * 0.037, 0.022, 0.1, head).scale.set(1, 0.75, 0.5);
+    mk(new THREE.SphereGeometry(0.0085, 8, 8), dark, sx * 0.037, 0.022, 0.106, head);
+    const brow = mk(new THREE.BoxGeometry(0.042, 0.008, 0.01), hair, sx * 0.038, 0.05, 0.098, head);
+    brow.rotation.z = -sx * 0.18; // чуть встревоженный взгляд
+    mk(new THREE.SphereGeometry(0.02, 8, 8), skin, sx * 0.1, 0, 0, head).scale.set(0.5, 1, 0.8);
+  }
+  mk(new THREE.BoxGeometry(0.04, 0.005, 0.006), lip, 0, -0.07, 0.104, head);
+
+  // --- волосы (растрёпанные) ---
+  const cap = mk(new THREE.SphereGeometry(0.118, 22, 14, 0, Math.PI * 2, 0, Math.PI * 0.46), hair, 0, 0.02, -0.012, head);
+  cap.scale.set(0.97, 1.1, 1.04); cap.rotation.x = -0.4;
+  const spikes = [
+    [0.0, 0.118, 0.045, 1.5, 0.0], [0.05, 0.112, 0.03, 1.1, -0.5], [-0.05, 0.114, 0.035, 1.3, 0.5],
+    [0.085, 0.09, -0.01, 0.3, -1.0], [-0.085, 0.09, -0.01, 0.3, 1.0], [0.0, 0.105, -0.07, -0.6, 0.0], [0.03, 0.125, 0.0, 0.2, -0.2]
+  ];
+  for (const [x, y, z, rx, rz] of spikes) {
+    const s = mk(new THREE.ConeGeometry(0.028, 0.075, 5), hair, x, y, z, head);
+    s.rotation.x = rx; s.rotation.z = rz;
+  }
+
+  // --- руки ---
+  const makeArm = side => {
+    const sh = pivot(side * 0.255, 1.46, 0);
+    mk(new THREE.SphereGeometry(0.058, 12, 10), hood, 0, 0, 0, sh);
+    mk(new THREE.CapsuleGeometry(0.05, 0.2, 4, 10), hood, 0, -0.15, 0, sh);
+    const el = pivot(0, -0.29, 0, sh);
+    mk(new THREE.SphereGeometry(0.048, 10, 8), hood, 0, 0, 0, el);
+    mk(new THREE.CapsuleGeometry(0.043, 0.16, 4, 10), hood, 0, -0.14, 0, el);
+    mk(new THREE.CylinderGeometry(0.046, 0.046, 0.045, 12), hoodD, 0, -0.255, 0, el);
+    mk(new THREE.SphereGeometry(0.038, 10, 8), skin, 0, -0.31, 0.005, el).scale.set(0.85, 1.25, 0.65);
+    return { sh, el };
+  };
+
+  // --- ноги ---
+  const makeLeg = side => {
+    const hip = pivot(side * 0.095, 0.88, 0);
+    mk(new THREE.CapsuleGeometry(0.078, 0.29, 4, 10), pants, 0, -0.22, 0, hip);
+    const kn = pivot(0, -0.44, 0, hip);
+    mk(new THREE.SphereGeometry(0.066, 10, 8), pants, 0, 0, 0, kn);
+    mk(new THREE.CapsuleGeometry(0.061, 0.3, 4, 10), pants, 0, -0.21, 0, kn);
+    mk(new THREE.BoxGeometry(0.1, 0.09, 0.27), shoe, 0, -0.385, 0.05, kn);
+    mk(new THREE.BoxGeometry(0.104, 0.03, 0.28), sole, 0, -0.425, 0.05, kn);
+    return { hip, kn };
+  };
+
+  const aL = makeArm(-1), aR = makeArm(1), lL = makeLeg(-1), lR = makeLeg(1);
+  g.scale.setScalar(0.97);
+  return {
+    group: g, head, torso,
+    legL: lL.hip, legR: lR.hip, kneeL: lL.kn, kneeR: lR.kn,
+    armL: aL.sh, armR: aR.sh, elbowL: aL.el, elbowR: aR.el
+  };
+}
+
+const hero = makeHuman(); hero.group.position.set(0, 0, -1); hero.group.rotation.y = Math.PI * 0.1; scene.add(hero.group);
+
+/* ================= ДВИЖЕНИЕ ================= */
+const POI = {
+  window: { stand: [-4.1, 0], face: [-5, 0] },
+  door: { stand: [4.0, 0], face: [5, 0] },
+  bed: { stand: [-2.7, -3.3], face: [-3.5, -3.3], sit: true },
+  desk: { stand: [3, -3.7], face: [3, -5] },
+  screen: { stand: [0, 3.9], face: [0, 5] },
+  bench: { stand: [3.5, 2.5], face: [3.5, 3.4], sit: true },
+  center: { stand: [0, 0], face: [0, -1] }
+};
+const S = { queue: [], cur: null, walking: false, sitting: false, anim: 0, arm: 0, armT: 0, bubbleUntil: 0 };
+const pos = hero.group.position;
+function turnTo(ang, dt, rate) {
+  let d = ang - hero.group.rotation.y; d = Math.atan2(Math.sin(d), Math.cos(d));
+  hero.group.rotation.y += d * Math.min(1, dt * rate); return Math.abs(d);
+}
+function nearestPOI() {
+  let best = 'center', bd = 1e9;
+  for (const [k, v] of Object.entries(POI)) { const d = Math.hypot(v.stand[0] - pos.x, v.stand[1] - pos.z); if (d < bd) { bd = d; best = k; } }
+  const names = { window: 'у окна', door: 'у двери', bed: 'у кровати', desk: 'у стола', screen: 'у экрана на стене', bench: 'у лавки', center: 'в центре комнаты' };
+  return names[best];
+}
+function startAction(a) {
+  a.t = 0; a.phase = 'init';
+  if (['go', 'sit', 'knock', 'touch'].includes(a.type)) {
+    const p = POI[a.target];
+    if (!p) { a.done = true; return; }
+    if (S.sitting && a.type !== 'sit') S.sitting = false;
+    a.dest = p.stand; a.face = p.face; a.phase = 'walk';
+  } else if (a.type === 'look') {
+    const p = POI[a.target]; if (!p) { a.done = true; return; }
+    a.face = p.face; a.phase = 'face';
+  } else if (a.type === 'stand') { S.sitting = false; a.phase = 'wait'; a.seconds = 0.6; }
+  else if (a.type === 'wait') a.phase = 'wait';
+}
+function updateAction(a, dt) {
+  if (a.phase === 'walk') {
+    const dx = a.dest[0] - pos.x, dz = a.dest[1] - pos.z, dist = Math.hypot(dx, dz);
+    if (dist < 0.06) { S.walking = false; a.phase = 'face'; return; }
+    S.walking = true;
+    const off = turnTo(Math.atan2(dx, dz), dt, 10);
+    if (off < 1.0) { const step = Math.min(dist, 1.5 * dt); pos.x += dx / dist * step; pos.z += dz / dist * step; }
+  } else if (a.phase === 'face') {
+    S.walking = false;
+    if (!a.face || turnTo(Math.atan2(a.face[0] - pos.x, a.face[1] - pos.z), dt, 8) < 0.06) {
+      if (a.type === 'sit') { S.sitting = true; a.phase = 'wait'; a.seconds = 0.8; }
+      else if (a.type === 'knock' || a.type === 'touch') { a.phase = 'do'; a.t = 0; }
+      else a.done = true;
+    }
+  } else if (a.phase === 'do') {
+    a.t += dt; S.arm = a.type === 'knock' ? 1 : 2; S.armT += dt;
+    if (a.t > (a.type === 'knock' ? 2.2 : 1.4)) { S.arm = 0; a.done = true; }
+  } else if (a.phase === 'wait') {
+    a.t += dt; if (a.t >= (a.seconds || 1)) a.done = true;
+  }
+}
+function animate(dt, time) {
+  if (!S.cur && S.queue.length) { S.cur = S.queue.shift(); startAction(S.cur); }
+  if (S.cur) { updateAction(S.cur, dt); if (S.cur.done) { S.cur = null; S.walking = false; } }
+
+  const k = Math.min(1, dt * 9);
+  const ease = (o, axis, v) => { o.rotation[axis] += (v - o.rotation[axis]) * k; };
+
+  // высота (сидит / стоит)
+  const targetY = S.sitting ? -0.32 : 0;
+  pos.y += (targetY - pos.y) * Math.min(1, dt * 6);
+
+  // шаг
+  if (S.walking) S.anim += dt * 8;
+  S.walkBlend = (S.walkBlend || 0) + ((S.walking ? 1 : 0) - (S.walkBlend || 0)) * Math.min(1, dt * 8);
+  const sw = Math.sin(S.anim) * 0.6 * S.walkBlend;
+  const cs = Math.cos(S.anim) * S.walkBlend;
+
+  // ноги
+  let tL, tR, kL, kR;
+  if (S.sitting) { tL = tR = -1.5; kL = kR = 1.5; }
+  else { tL = sw; tR = -sw; kL = Math.max(0, -cs) * 0.9; kR = Math.max(0, cs) * 0.9; }
+  ease(hero.legL, 'x', tL); ease(hero.legR, 'x', tR);
+  ease(hero.kneeL, 'x', kL); ease(hero.kneeR, 'x', kR);
+
+  // руки
+  let aL = -sw * 0.8, aR = sw * 0.8, eL = -0.25, eR = -0.25;
+  if (S.sitting) { aL = aR = -0.55; eL = eR = -0.8; }
+  else if (S.thinking && !S.walking && !S.arm) { aR = -0.9; eR = -2.1; } // рука у подбородка
+  if (S.arm === 1) { aR = -1.55; eR = -0.9 + Math.sin(S.armT * 16) * 0.4; }
+  if (S.arm === 2) { aR = -1.25; eR = -0.35; }
+  ease(hero.armL, 'x', aL); ease(hero.armR, 'x', aR);
+  ease(hero.elbowL, 'x', eL); ease(hero.elbowR, 'x', eR);
+
+  // дыхание и голова
+  hero.torso.scale.y = 1 + Math.sin(time * 1.8) * 0.012;
+  ease(hero.head, 'y', Math.sin(time * 0.6) * 0.15 * (1 - S.walkBlend));
+  ease(hero.head, 'x', S.thinking ? 0.12 : 0);
+  ease(hero.head, 'z', S.thinking ? 0.08 : 0);
+}
+
+/* ================= КАМЕРА 360° ================= */
+let yaw = 0.5, pitch = 0.3, dist = 4.0;
+const camT = new THREE.Vector3(0, 1.2, -1);
+let follow = false;
+const tmpV = new THREE.Vector3();
+function updateCamera(dt) {
+  if (follow) { let d = (hero.group.rotation.y + Math.PI) - yaw; d = Math.atan2(Math.sin(d), Math.cos(d)); yaw += d * Math.min(1, dt * 2.5); }
+  tmpV.set(pos.x, 1.2 + pos.y, pos.z); camT.lerp(tmpV, Math.min(1, dt * 5));
+  const cx = camT.x + dist * Math.sin(yaw) * Math.cos(pitch);
+  const cy = camT.y + dist * Math.sin(pitch);
+  const cz = camT.z + dist * Math.cos(yaw) * Math.cos(pitch);
+  camera.position.set(Math.max(-4.7, Math.min(4.7, cx)), Math.max(0.5, Math.min(3.4, cy)), Math.max(-4.7, Math.min(4.7, cz)));
+  camera.lookAt(camT);
+}
+const ptrs = new Map(); let lastPinch = 0;
+const cv = $('c');
+cv.addEventListener('pointerdown', e => { cv.setPointerCapture(e.pointerId); ptrs.set(e.pointerId, [e.clientX, e.clientY]); });
+cv.addEventListener('pointerup', e => { ptrs.delete(e.pointerId); lastPinch = 0; });
+cv.addEventListener('pointercancel', e => { ptrs.delete(e.pointerId); lastPinch = 0; });
+cv.addEventListener('pointermove', e => {
+  if (!ptrs.has(e.pointerId)) return;
+  const prev = ptrs.get(e.pointerId); ptrs.set(e.pointerId, [e.clientX, e.clientY]);
+  if (ptrs.size === 1) { yaw -= (e.clientX - prev[0]) * 0.008; pitch = Math.max(-0.15, Math.min(1.2, pitch + (e.clientY - prev[1]) * 0.006)); follow = false; $('fol').style.opacity = 1; }
+  else if (ptrs.size === 2) {
+    const [a, b] = [...ptrs.values()]; const d = Math.hypot(a[0] - b[0], a[1] - b[1]);
+    if (lastPinch) dist = Math.max(1.5, Math.min(4.6, dist - (d - lastPinch) * 0.01)); lastPinch = d;
+  }
+});
+cv.addEventListener('wheel', e => { dist = Math.max(1.5, Math.min(4.6, dist + e.deltaY * 0.003)); });
+$('fol').onclick = () => { follow = !follow; $('fol').style.opacity = follow ? 0.55 : 1; $('fol').textContent = follow ? 'FOLLOW: ON' : 'FOLLOW'; };
+
+/* ================= ЛОГ, РЕЧЬ, API ================= */
+const log = $('log'), bubble = $('bubble');
+function addLog(cls, text) { const d = document.createElement('div'); d.className = cls; d.textContent = text; log.appendChild(d); log.scrollTop = log.scrollHeight; while (log.children.length > 40) log.removeChild(log.firstChild); }
+addLog('s', '[SYSTEM] Канал связи открыт. Субъект бодрствует.');
+let awareness = 15;
+function setAwareness(v) { awareness = Math.max(0, Math.min(100, v)); $('awf').style.width = awareness + '%'; $('awt').textContent = 'SUBJECT AWARENESS: ' + Math.round(awareness) + '%'; }
+const hist = [];
+
+// адрес твоего Worker на Cloudflare (без слэша в конце)
+const WORKER_URL = 'https://panopticon.grabbb777.workers.dev';
+
+async function api(body) {
+  const r = await fetch(WORKER_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Init-Data': tg?.initData || '' },
+    body: JSON.stringify(body)
+  });
+  let data = {}; try { data = await r.json(); } catch {}
+  if (!r.ok) throw new Error(data.error || ('HTTP ' + r.status));
+  return data;
+}
+// запись с микрофона → WAV 16 кГц (его точно понимает Gemini на любом телефоне)
+async function wavFromBlob(blob) {
+  const buf = await blob.arrayBuffer();
+  const ac = new (window.AudioContext || window.webkitAudioContext)();
+  const dec = await new Promise((ok, no) => ac.decodeAudioData(buf, ok, no));
+  try { ac.close(); } catch {}
+  const off = new OfflineAudioContext(1, Math.max(1, Math.ceil(dec.duration * 16000)), 16000);
+  const src = off.createBufferSource(); src.buffer = dec; src.connect(off.destination); src.start();
+  const out = (await off.startRendering()).getChannelData(0);
+  const dv = new DataView(new ArrayBuffer(44 + out.length * 2));
+  const str = (o, s) => { for (let i = 0; i < s.length; i++) dv.setUint8(o + i, s.charCodeAt(i)); };
+  str(0, 'RIFF'); dv.setUint32(4, 36 + out.length * 2, true); str(8, 'WAVE'); str(12, 'fmt ');
+  dv.setUint32(16, 16, true); dv.setUint16(20, 1, true); dv.setUint16(22, 1, true);
+  dv.setUint32(24, 16000, true); dv.setUint32(28, 32000, true); dv.setUint16(32, 2, true); dv.setUint16(34, 16, true);
+  str(36, 'data'); dv.setUint32(40, out.length * 2, true);
+  for (let i = 0; i < out.length; i++) { const s = Math.max(-1, Math.min(1, out[i])); dv.setInt16(44 + i * 2, s < 0 ? s * 0x8000 : s * 0x7fff, true); }
+  return new Blob([dv], { type: 'audio/wav' });
+}
+const toB64 = blob => new Promise((ok, no) => { const f = new FileReader(); f.onload = () => ok(String(f.result).split(',')[1]); f.onerror = no; f.readAsDataURL(blob); });
+function speak(text) {
+  try {
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = /[іїєґІЇЄҐ]/.test(text) ? 'uk-UA' : 'ru-RU'; u.pitch = 0.85; u.rate = 1.02;
+    speechSynthesis.cancel(); speechSynthesis.speak(u);
+  } catch {}
+}
+let busy = false;
+// send({text}) — текстом, send({blob}) — голосом (аудио уходит сразу к ИИ)
+async function send({ text, blob }) {
+  if (busy || (!text && !blob)) return; busy = true; S.thinking = true;
+  if (text) addLog('p', `[PLAYER] (Text): ${text}`);
+  else addLog('s', '[SYSTEM] (Audio Detected)');
+  // сразу показываем, что сообщение принято, чтобы не казалось, что игра зависла
+  bubble.textContent = '…'; S.bubbleUntil = performance.now() + 60000;
+  $('micl').textContent = 'ARTYOM IS THINKING…';
+  mic.style.opacity = 0.45;
+  try {
+    const payload = { history: hist, state: { where: nearestPOI(), sitting: S.sitting, awareness } };
+    if (text) payload.text = text;
+    else { payload.audio = await toB64(await wavFromBlob(blob)); payload.mime = 'audio/wav'; }
+    const res = await api(payload);
+    if (!text) { text = res.heard || '(голос)'; addLog('p', `[PLAYER] (Voice): ${text}`); }
+    hist.push({ role: 'user', content: text }, { role: 'assistant', content: res.say }); while (hist.length > 20) hist.shift();
+    addLog('ch', `[CHARACTER] (Audio/Text): ${res.say}`);
+    bubble.textContent = res.say; S.bubbleUntil = performance.now() + 6500;
+    speak(res.say); setAwareness(awareness + res.awareness_delta);
+    for (const a of res.actions) S.queue.push({ ...a });
+  } catch (e) { addLog('er', '[SYSTEM] ' + e.message); S.bubbleUntil = 0; }
+  S.thinking = false; busy = false;
+  $('micl').textContent = 'HOLD TO SPEAK (VOICE RECOGNITION)';
+  mic.style.opacity = 1;
+}
+
+/* ===== микрофон: держишь — говоришь ===== */
+let stream, rec, chunks = [], recording = false, startedAt = 0;
+function pickMime() { for (const m of ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg']) if (window.MediaRecorder && MediaRecorder.isTypeSupported(m)) return m; return ''; }
+async function startRec() {
+  if (recording || busy) return;
+  try {
+    stream = stream || await navigator.mediaDevices.getUserMedia({ audio: true });
+    rec = new MediaRecorder(stream, pickMime() ? { mimeType: pickMime() } : undefined);
+    chunks = []; rec.ondataavailable = e => e.data.size && chunks.push(e.data);
+    rec.onstop = onStop; rec.start(); recording = true; startedAt = Date.now();
+    $('mic').classList.add('rec'); tg?.HapticFeedback?.impactOccurred('light');
+  } catch { addLog('er', '[SYSTEM] Нет доступа к микрофону. Разреши его или используй ⌨ TEXT.'); }
+}
+function stopRec() { if (!recording) return; recording = false; $('mic').classList.remove('rec'); try { rec.stop(); } catch {} }
+async function onStop() {
+  if (Date.now() - startedAt < 450) return;
+  const blob = new Blob(chunks, { type: rec.mimeType || 'audio/webm' });
+  if (blob.size < 1500) return;
+  send({ blob });
+}
+const mic = $('mic');
+mic.addEventListener('pointerdown', e => { e.preventDefault(); mic.setPointerCapture(e.pointerId); startRec(); });
+mic.addEventListener('pointerup', stopRec); mic.addEventListener('pointercancel', stopRec);
+mic.addEventListener('contextmenu', e => e.preventDefault());
+$('kb').onclick = () => { const t = $('txt'); t.style.display = t.style.display === 'block' ? 'none' : 'block'; if (t.style.display === 'block') $('inp').focus(); };
+$('inp').addEventListener('keydown', e => { if (e.key === 'Enter' && $('inp').value.trim()) { send({ text: $('inp').value.trim() }); $('inp').value = ''; } });
+
+/* ================= ЦИКЛ ================= */
+function resize() { renderer.setSize(innerWidth, innerHeight, false); camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); }
+addEventListener('resize', resize); resize();
+const clock = new THREE.Clock(); const hp = new THREE.Vector3();
+renderer.setAnimationLoop(() => {
+  const dt = Math.min(clock.getDelta(), 0.05), t = clock.elapsedTime;
+  animate(dt, t); updateCamera(dt); drawScreen(t);
+  lampLight.intensity = 2.1 + Math.sin(t * 23) * 0.05 + Math.sin(t * 7) * 0.05;
+  hp.set(pos.x, 1.95 + pos.y, pos.z).project(camera);
+  if (performance.now() < S.bubbleUntil && hp.z < 1) {
+    bubble.style.display = 'block';
+    bubble.style.left = ((hp.x * 0.5 + 0.5) * innerWidth) + 'px';
+    bubble.style.top = ((-hp.y * 0.5 + 0.5) * innerHeight) + 'px';
+  } else bubble.style.display = 'none';
+  renderer.render(scene, camera);
+});
+</script>
+</body>
+</html>
